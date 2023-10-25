@@ -1,6 +1,72 @@
 import * as bril from './bril-ts/bril.ts';
 import {readStdin, unreachable} from './bril-ts/util.ts';
 
+export enum Color {
+    White, Black
+}
+/**
+ * A garbage collector collects garbage.
+ */
+export class GarbageCollector {
+    count: number;
+    constructor() {
+        // The number of times this collector has been called
+        this.count = 0;
+    }
+
+    
+    sweep(state: State, colors: Map<number, Color>) {
+        console.log(colors)
+        for (let base of state.heap.storage.keys()) {
+            if (!colors.has(base)) {
+                console.log("freeing")
+                console.log(base)
+                state.heap.free(new Key(base, 0))
+            }
+        }
+    }
+
+    dfs(state: State, key: Key, colors: Map<number, Color>) {
+        colors.set(key.base, Color.Black);
+        if (state.heap.contains(key)) {
+            let data = state.heap.storage.get(key);
+            if(data === undefined) {
+              return
+            }
+            for (let i = 0; i < data.length; i++) {
+                let val = data[i]
+                if(val.hasOwnProperty("loc") && !colors.has(val.loc)) {
+                    console.log("WE GOT THIS")
+                    this.dfs(state, val.loc, colors)
+                  }
+            }
+            
+        }
+    }
+
+    mark(state: State): Map<Key, Color> {
+      const colors = new Map<Key, Color>();
+      // Trace starting with the roots (stack)
+      console.log(state.env)
+      for (let [ident, value] of state.env) {
+          if (value.hasOwnProperty("loc")) {
+            this.dfs(state, value.loc, colors);
+          }
+        }
+        return colors;
+    }
+
+    collectGarbage(state: State){
+      this.count++;
+      if (this.count == 5){
+        let c = this.mark(state);
+        this.sweep(state, c);
+        this.count = 0;
+      }
+    }
+}
+
+
 /**
  * An interpreter error to print to the console.
  */
@@ -43,9 +109,9 @@ export class Key {
  */
 export class Heap<X> {
 
-    private readonly storage: Map<number, X[]>
+    readonly storage: Map<number, X[]>
     constructor() {
-        this.storage = new Map()
+        this.storage = new Map();
     }
 
     isEmpty(): boolean {
@@ -96,6 +162,15 @@ export class Heap<X> {
             return data[key.offset];
         } else {
             throw error(`Uninitialized heap location ${key.base} and/or illegal offset ${key.offset}`);
+        }
+    }
+
+    contains(key: Key): Boolean {
+        let data = this.storage.get(key.base);
+        if (data && data.length > key.offset && key.offset >= 0) {
+            return true;
+        } else {
+            return false;
         }
     }
 }
@@ -327,7 +402,7 @@ type State = {
 /**
  * Interpet a call instruction.
  */
-function evalCall(instr: bril.Operation, state: State): Action {
+function evalCall(instr: bril.Operation, state: State, gc: GarbageCollector): Action {
   // Which function are we calling?
   let funcName = getFunc(instr, 0);
   let func = findFunc(funcName, state.funcs);
@@ -367,7 +442,7 @@ function evalCall(instr: bril.Operation, state: State): Action {
     curlabel: null,
     specparent: null,  // Speculation not allowed.
   }
-  let retVal = evalFunc(func, newState);
+  let retVal = evalFunc(func, newState, gc);
   state.icount = newState.icount;
 
   // Dynamically check the function's return value and type.
@@ -410,9 +485,8 @@ function evalCall(instr: bril.Operation, state: State): Action {
  * otherwise, return "next" to indicate that we should proceed to the next
  * instruction or "end" to terminate the function.
  */
-function evalInstr(instr: bril.Instruction, state: State): Action {
-  state.icount += BigInt(1);
-
+function evalInstr(instr: bril.Instruction, state: State, gc: GarbageCollector): Action {
+  state.icount += BigInt(1)
   // Check that we have the right number of arguments.
   if (instr.op !== "const") {
     let count = argCounts[instr.op];
@@ -429,6 +503,8 @@ function evalInstr(instr: bril.Instruction, state: State): Action {
   if (state.specparent && ['call', 'ret'].includes(instr.op)) {
     throw error(`${instr.op} not allowed during speculation`);
   }
+  gc.collectGarbage(state);
+
 
   switch (instr.op) {
   case "const":
@@ -631,7 +707,7 @@ function evalInstr(instr: bril.Instruction, state: State): Action {
   }
 
   case "call": {
-    return evalCall(instr, state);
+    return evalCall(instr, state, gc);
   }
 
   case "alloc": {
@@ -642,12 +718,13 @@ function evalInstr(instr: bril.Instruction, state: State): Action {
     }
     let ptr = alloc(typ, Number(amt), state.heap);
     state.env.set(instr.dest, ptr);
+
     return NEXT;
   }
 
   case "free": {
-    let val = getPtr(instr, state.env, 0);
-    state.heap.free(val.loc);
+    // let val = getPtr(instr, state.env, 0);
+    // state.heap.free(val.loc);
     return NEXT;
   }
 
@@ -775,12 +852,13 @@ function evalInstr(instr: bril.Instruction, state: State): Action {
   throw error(`unhandled opcode ${(instr as any).op}`);
 }
 
-function evalFunc(func: bril.Function, state: State): Value | null {
+function evalFunc(func: bril.Function, state: State, gc: GarbageCollector): Value | null {
+
   for (let i = 0; i < func.instrs.length; ++i) {
     let line = func.instrs[i];
     if ('op' in line) {
       // Run an instruction.
-      let action = evalInstr(line, state);
+      let action = evalInstr(line, state, gc);
 
       // Take the prescribed action.
       switch (action.action) {
@@ -918,7 +996,8 @@ function parseMainArguments(expected: bril.Argument[], args: string[]) : Env {
 }
 
 function evalProg(prog: bril.Program) {
-  let heap = new Heap<Value>()
+  let heap = new Heap<Value>();
+  let gc = new GarbageCollector();
   let main = findFunc("main", prog.functions);
   if (main === null) {
     console.warn(`no main function defined, doing nothing`);
@@ -947,7 +1026,15 @@ function evalProg(prog: bril.Program) {
     curlabel: null,
     specparent: null,
   }
-  evalFunc(main, state);
+  
+  evalFunc(main, state, gc);
+
+  // Final garbage collection at the end
+  state.env.clear()
+  console.log(state.env)
+  console.log("heap:")
+  console.log(heap)
+  gc.collectGarbage(state);
 
   if (!heap.isEmpty()) {
     throw error(`Some memory locations have not been freed by end of execution.`);
