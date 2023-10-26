@@ -57,6 +57,11 @@ export class GarbageCollector {
       this.count = 0;
     }
   }
+
+  sudoCollectGarbage(stack: Array<Env>, heap: Heap<Value>) {
+    let colors = this.mark(stack, heap);
+    this.sweep(heap, colors);
+  }
 }
 
 
@@ -685,7 +690,6 @@ function evalInstr(instr: bril.Instruction, state: State, gc: GarbageCollector, 
     }
 
     case "ret": {
-      stack.pop();
       let args = instr.args || [];
       if (args.length == 0) {
         return { "action": "end", "ret": null };
@@ -859,6 +863,7 @@ function evalFunc(func: bril.Function, state: State, gc: GarbageCollector, stack
       // Take the prescribed action.
       switch (action.action) {
         case 'end': {
+          stack.pop();
           // Return from this function.
           return action.ret;
         }
@@ -923,6 +928,7 @@ function evalFunc(func: bril.Function, state: State, gc: GarbageCollector, stack
   if (state.specparent) {
     throw error(`implicit return in speculative state`);
   }
+  stack.pop();
   return null;
 }
 
@@ -1027,8 +1033,7 @@ function evalProg(prog: bril.Program) {
   evalFunc(main, state, gc, stack);
 
   // Final garbage collection at the end
-  stack.length = 0;
-  gc.collectGarbage(stack, heap);
+  gc.sudoCollectGarbage(stack, heap);
 
   if (!heap.isEmpty()) {
     throw error(`Some memory locations have not been freed by end of execution.`);
