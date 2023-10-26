@@ -25,15 +25,22 @@ export class GarbageCollector {
 
   dfs(heap: Heap<Value>, key: Key, colors: Map<number, Color>) {
     colors.set(key.base, Color.Black);
-    if (heap.contains(key)) {
-      let heapVal = heap.read(key);
-      if (heapVal === undefined) {
-        return
+
+    if (heap.contains(new Key(key.base, 0))) {
+        let data = heap.storage.get(key.base);
+        if (data === undefined) {
+          return
+        }
+        for (let i = 0; i < data.length; i++) {
+            let val = heap.read(new Key(key.base, i))
+            if (val === undefined) {
+                continue
+            }
+            if (val.hasOwnProperty("loc") && !colors.has(val.loc)) {
+                this.dfs(heap, val.loc, colors)
+            }
+        }
       }
-      if (heapVal.hasOwnProperty("loc") && !colors.has(heapVal.loc)) {
-        this.dfs(heap, heapVal.loc, colors)
-      }
-    }
   }
 
   mark(stack: Array<Env>, heap: Heap<Value>): Map<number, Color> {
