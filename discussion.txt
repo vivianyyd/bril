@@ -1,14 +1,14 @@
  Vivian and I worked on lesson 11 together.
 [Brili with GC](https://github.com/vivianyyd/bril/blob/main/brili.ts)
 
-
 **Summary**
 - We added a Tracing garbage collector to brili.ts that runs every 5 times it is called (which is after every alloc instruction). The garbage collector is also forced to run at the end of the main function return.
 - The interpreter was modified to perform a "nop" to any "free" instructions, and the code passes all test cases, with currently no signs of memory leaks.
 
 **Implementation details**
 - We first had to implement a "stack" that keeps track of all current environments, this is essentially an array would we would push or pop Env from.
-- We performed tracing by performing a DFS starting on every value on the stack that is a Pointer type (we did this type check by seeing if it having a "loc" property). Anything in the heap whose "key" was not visited was freed.
+- We performed tracing by performing a DFS starting on every value on the stack that is a Pointer type (we did this type check by seeing if it having a "loc" property). Every time we follow a pointer, we go to the head of the memory segment it is located in and read through all the data in that segment, recursing on all pointers within that segment. 
+- Anything in the heap whose "key" was not visited was freed.
 - To test the code, we also made some adversarial tests; for example, we have a test that calls a function 99999 times, whose only instruction is to call alloc. We make sure then that the heap does not exceed a certain size.
 
 **What was the hardest part of the task? How did you solve this problem?**
