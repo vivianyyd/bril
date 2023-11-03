@@ -38,9 +38,16 @@ interface Op {
 }
 
 /**
+ * Modified code: used to keep track of profiling
+ */
+interface Executable {
+  count?: number;
+}
+
+/**
  * An instruction that does not produce any result.
  */
-export interface EffectOperation extends Op {
+export interface EffectOperation extends Op, Executable {
   op: "br" | "jmp" | "print" | "ret" | "call" |
     "store" | "free" |
     "speculate" | "guard" | "commit";
@@ -50,7 +57,7 @@ export interface EffectOperation extends Op {
  * An operation that produces a value and places its result in the
  * destination variable.
  */
-export interface ValueOperation extends Op {
+export interface ValueOperation extends Op, Executable {
   op: "add" | "mul" | "sub" | "div" |
       "id" | "nop" |
       "eq" | "lt" | "gt" | "ge" | "le" | "not" | "and" | "or" |
@@ -73,7 +80,7 @@ export type Value = number | boolean | string;
 /**
  * An instruction that places a literal value into a variable.
  */
-export interface Constant {
+export interface Constant extends Executable {
   op: "const";
   value: Value;
   dest: Ident;
@@ -116,7 +123,7 @@ export type OpCode = ValueOpCode | EffectOpCode;
 /**
  * Jump labels just mark a position with a name.
  */
-export interface Label {
+export interface Label extends Executable {
   label: Ident;
   pos?: Position;
 }
